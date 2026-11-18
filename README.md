@@ -27,4 +27,4 @@ MoneyLog는 일상 지출을 기록하고 월별 소비와 예산을 확인하�
 
 **프로젝트 마감일** · 2026년 11월 30일
 
-기능별 완료 기준, 화면 흐름, 데이터 구조, 개발 일정과 시연 방법은 [기획·설계서](docs/planning-design.md)에 정리했습니다.
+기능별 완료 기준, 화면 흐름, 데이터 구조, 논리·물리 구성도는 [기획·설계서](docs/planning-design.md)에서 확인할 수 있습니다. [제출용 Word 문서](docs/moneylog-planning-design.docx)도 제공됩니다.
