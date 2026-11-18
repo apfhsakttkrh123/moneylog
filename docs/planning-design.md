@@ -90,7 +90,14 @@ LocalStorage 키는 `moneylog:v1`이다. 초기 데이터는 지출 목록과 �
 
 ## 6. 논리 구성도
 
-![사용자 입력에서 지출·예산 관리, 조회·통계, 데이터 저장으로 이어지는 논리 구성도](diagrams/logical-architecture.png)
+```mermaid
+flowchart TD
+    user["사용자"] <-->|입력과 조회 결과| ui["화면<br/>대시보드 · 지출 내역 · 입력 폼"]
+    ui -->|변경 요청| manage["지출·예산 관리<br/>입력 검증 · 등록·수정·삭제 · 예산 설정"]
+    ui <-->|조회 조건과 결과| query["조회·통계<br/>월별 집계 · 검색 · 필터"]
+    manage -->|검증된 변경 저장| data["데이터 저장<br/>지출 내역 · 월별 예산"]
+    query -->|저장된 지출·예산 읽기| data
+```
 
 | 구성 요소 | 담당 기능 |
 |---|---|
@@ -103,7 +110,18 @@ LocalStorage 키는 `moneylog:v1`이다. 초기 데이터는 지출 목록과 �
 
 ## 7. 물리 구성도
 
-![개발 환경에서 GitHub와 GitHub Pages를 거쳐 사용자 브라우저에 정적 파일을 제공하는 물리 구성도](diagrams/physical-architecture.png)
+```mermaid
+flowchart TD
+    dev["개발 환경<br/>HTML · CSS · JavaScript"] -->|Git 푸시| repo["GitHub 저장소<br/>소스 코드 · 설계 문서"]
+    repo -->|정적 파일 배포| pages["GitHub Pages<br/>정적 웹 호스팅"]
+    subgraph device["사용자 기기"]
+        browser["웹 브라우저<br/>화면 표시 · JavaScript 실행"]
+        storage["LocalStorage<br/>moneylog:v1 · JSON"]
+        browser <-->|읽기·쓰기| storage
+    end
+    browser -->|HTTPS 요청| pages
+    pages -->|HTML · CSS · JavaScript 응답| browser
+```
 
 | 배치 위치 | 구성 및 역할 |
 |---|---|
