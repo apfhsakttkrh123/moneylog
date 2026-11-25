@@ -2,7 +2,7 @@ import {
   categories, filterExpenses, formatPercent, formatWon, isAmount, isDate, isMonth,
   localDate, monthlyExpenses, offsetMonth, summarize,
 } from "./summary.js";
-import { loadData, saveData, StorageConflict } from "./storage.js";
+import { loadData, saveData, StorageConflict, STORAGE_KEY } from "./storage.js";
 
 const byId = id => document.getElementById(id);
 const monthInput = byId("month");
@@ -22,29 +22,34 @@ const ledger = byId("expenses-view");
 const budgetButton = document.querySelector("[data-action='budget']");
 const addButtons = document.querySelectorAll("[data-action='add']");
 const navigation = document.querySelectorAll(".navigation a");
+const RECENT_LIMIT = 5;
 
 let selectedMonth = localDate().slice(0, 7);
 let snapshot = null;
 let monthExpenses = [];
 let editor = null;
 let saving = false;
+let storageRefreshPending = false;
 
-function load() {
+function refreshStorage() {
+  storageRefreshPending = false;
+  const warning = byId("storage-error");
   try {
     snapshot = loadData();
+    warning.hidden = true;
   } catch {
-    const warning = byId("storage-error");
+    snapshot = null;
     warning.textContent = "저장된 데이터를 읽을 수 없습니다. 브라우저의 사이트 저장 설정을 확인하고 새로고침해 주세요. 저장된 데이터는 그대로 유지됩니다.";
     warning.hidden = false;
   }
+  for (const button of [...addButtons, budgetButton]) button.disabled = !snapshot;
+  renderMonth();
 }
 
 for (const [key, label] of Object.entries(categories)) {
   categoryFilter.add(new Option(label, key));
   fields.category.add(new Option(label, key));
 }
-load();
-for (const button of [...addButtons, budgetButton]) button.disabled = !snapshot;
 
 function monthLabel(month) {
   const [year, number] = month.split("-").map(Number);
@@ -77,12 +82,12 @@ function expenseRow(expense, editable) {
   return row;
 }
 
-function categoryRow(item) {
+function categoryRow(item, total) {
   const row = byId("category-row").content.firstElementChild.cloneNode(true);
   row.dataset.category = item.category;
   row.querySelector(".category-name").textContent = categories[item.category];
   row.querySelector(".category-amount").textContent = formatWon(item.amount);
-  row.querySelector(".category-share").textContent = formatPercent(item.share);
+  row.querySelector(".category-share").textContent = formatPercent(item.share, total - item.amount);
   row.querySelector(".category-track span").style.width = item.share + "%";
   return row;
 }
@@ -99,18 +104,18 @@ function renderList() {
 }
 
 function renderDashboard() {
-  const budget = snapshot.data.budgets[selectedMonth];
+  const budget = snapshot?.data.budgets[selectedMonth];
   const summary = summarize(monthExpenses, budget);
   const hasBudget = summary.balance !== null;
   const exceeded = hasBudget && summary.balance < 0n;
 
-  setText("total-spent", formatWon(summary.total));
-  setText("expense-count", "지출 " + monthExpenses.length + "건");
-  setText("budget-amount", hasBudget ? formatWon(budget) : "미설정");
+  setText("total-spent", snapshot ? formatWon(summary.total) : "—");
+  setText("expense-count", snapshot ? "지출 " + monthExpenses.length + "건" : "지출을 불러올 수 없습니다.");
+  setText("budget-amount", !snapshot ? "—" : hasBudget ? formatWon(budget) : "미설정");
   setText("budget-detail", monthLabel(selectedMonth) + " 예산");
   setText("balance-amount", hasBudget ? formatWon(exceeded ? -summary.balance : summary.balance) : "—");
   setText("balance-detail", exceeded ? "예산 초과" : summary.balance === 0n ? "예산 소진" :
-    hasBudget ? "이번 달 사용 가능한 금액" : "월 예산을 설정해 주세요.");
+    hasBudget ? "이번 달 사용 가능한 금액" : snapshot ? "월 예산을 설정해 주세요." : "예산을 불러올 수 없습니다.");
   byId("balance-amount").closest(".metric").classList.toggle("over-budget", exceeded);
   budgetButton.textContent = hasBudget ? "예산 수정" : "예산 설정";
 
@@ -118,14 +123,17 @@ function renderDashboard() {
   progress.hidden = !hasBudget;
   progress.value = hasBudget ? Math.min(100, summary.usage) : 0;
   progress.classList.toggle("over-budget", exceeded);
-  const usageText = hasBudget ? formatPercent(summary.usage) + " 사용" : "예산을 설정하면 사용률을 확인할 수 있습니다.";
+  const usageText = hasBudget
+    ? formatPercent(summary.usage, summary.balance) + " 사용"
+    : "예산을 설정하면 사용률을 확인할 수 있습니다.";
   progress.setAttribute("aria-valuetext", usageText);
   setText("budget-usage", usageText);
+  byId("budget-usage").hidden = !snapshot;
 
-  byId("category-list").replaceChildren(...summary.byCategory.map(categoryRow));
-  byId("category-empty").hidden = summary.byCategory.length !== 0;
-  byId("recent-list").replaceChildren(...monthExpenses.slice(0, 5).map(expense => expenseRow(expense, false)));
-  byId("recent-empty").hidden = monthExpenses.length !== 0;
+  byId("category-list").replaceChildren(...summary.byCategory.map(item => categoryRow(item, summary.total)));
+  byId("category-empty").hidden = !snapshot || summary.byCategory.length !== 0;
+  byId("recent-list").replaceChildren(...monthExpenses.slice(0, RECENT_LIMIT).map(expense => expenseRow(expense, false)));
+  byId("recent-empty").hidden = !snapshot || monthExpenses.length !== 0;
 }
 
 function renderMonth() {
@@ -133,12 +141,8 @@ function renderMonth() {
   setText("month-caption", monthLabel(selectedMonth));
   byId("previous-month").disabled = offsetMonth(selectedMonth, -1) === selectedMonth;
   byId("next-month").disabled = offsetMonth(selectedMonth, 1) === selectedMonth;
-  if (snapshot) {
-    monthExpenses = monthlyExpenses(snapshot.data.expenses, selectedMonth);
-    renderDashboard();
-  } else {
-    for (const id of ["recent-empty", "category-empty", "budget-usage"]) byId(id).hidden = true;
-  }
+  monthExpenses = snapshot ? monthlyExpenses(snapshot.data.expenses, selectedMonth) : [];
+  renderDashboard();
   renderList();
 }
 
@@ -158,6 +162,17 @@ window.addEventListener("hashchange", () => {
   if (location.hash === "#main") return;
   showPage();
   byId("page-title").focus();
+});
+
+document.querySelector(".skip-link").addEventListener("click", event => {
+  event.preventDefault();
+  byId("page-title").focus();
+});
+
+window.addEventListener("storage", event => {
+  if (event.storageArea !== localStorage || (event.key !== STORAGE_KEY && event.key !== null)) return;
+  if (dialog.open) storageRefreshPending = true;
+  else refreshStorage();
 });
 
 function changeMonth(value) {
@@ -229,9 +244,13 @@ dialog.addEventListener("cancel", event => {
 });
 dialog.addEventListener("close", () => {
   if (dialog.open) return;
-  const trigger = editor?.trigger;
+  const { trigger, savedExpenseId } = editor ?? {};
   editor = null;
-  if (trigger?.isConnected && !trigger.closest("[hidden]")) trigger.focus();
+  if (storageRefreshPending) refreshStorage();
+  const savedRowButton = !ledger.hidden && savedExpenseId
+    ? Array.from(ledger.querySelectorAll('[data-action="edit"]')).find(button => button.dataset.id === savedExpenseId) : null;
+  if (savedRowButton) savedRowButton.focus();
+  else if (trigger?.isConnected && !trigger.closest("[hidden]")) trigger.focus();
   else if (!ledger.hidden) searchInput.focus();
   else navigation[0].focus();
 });
@@ -250,11 +269,11 @@ function nextData(action, expense, month) {
       showEditorError("예산은 1원 이상의 정수로 입력해 주세요.", fields.budget);
       return null;
     }
-    return { ...data, budgets: { ...data.budgets, [month]: budget } };
+    return { data: { ...data, budgets: { ...data.budgets, [month]: budget } } };
   }
 
   if (action === "delete") {
-    return { ...data, expenses: data.expenses.filter(item => item.id !== expense.id) };
+    return { data: { ...data, expenses: data.expenses.filter(item => item.id !== expense.id) } };
   }
 
   const date = fields.date.value;
@@ -278,7 +297,7 @@ function nextData(action, expense, month) {
   const expenses = expense
     ? data.expenses.map(item => item.id === expense.id ? entry : item)
     : [entry, ...data.expenses];
-  return { ...data, expenses };
+  return { data: { ...data, expenses }, entry };
 }
 
 form.addEventListener("submit", async event => {
@@ -288,28 +307,40 @@ form.addEventListener("submit", async event => {
   editorError.hidden = true;
   saving = saveButton.disabled = cancelButton.disabled = true;
   try {
-    const data = nextData(action, expense, month);
-    if (!data) return;
+    const change = nextData(action, expense, month);
+    if (!change) return;
+    const { data, entry } = change;
+    expenseFields.disabled = budgetFields.disabled = true;
     const raw = await saveData(snapshot.raw, data);
     snapshot = { raw, data };
-    if (action === "edit" || action === "add") {
-      selectedMonth = fields.date.value.slice(0, 7);
+    if (entry) {
+      selectedMonth = entry.date.slice(0, 7);
       searchInput.value = "";
       categoryFilter.value = "";
+      editor.savedExpenseId = entry.id;
     }
     renderMonth();
+    if (entry && !dashboard.hidden && !monthExpenses.slice(0, RECENT_LIMIT).includes(entry)) {
+      window.history.pushState(null, "", "#expenses");
+      showPage();
+    }
     dialog.close();
     const messages = { add: "지출을 등록했습니다.", edit: "지출을 수정했습니다.",
       delete: "지출을 삭제했습니다.", budget: "월 예산을 저장했습니다." };
     setText("announcement", messages[action]);
   } catch (error) {
-    showEditorError(error instanceof StorageConflict
-      ? "다른 탭에서 기록이 변경되었습니다. 입력 내용을 확인한 뒤 이 페이지를 새로고침해 주세요."
-      : "저장하지 못했습니다. 브라우저의 사이트 저장 설정을 확인한 뒤 다시 시도해 주세요.");
+    if (error instanceof StorageConflict) {
+      storageRefreshPending = true;
+      showEditorError("다른 탭에서 기록이 변경되었습니다. 입력 내용을 확인한 뒤 창을 닫으면 최신 내역을 불러옵니다.");
+    } else {
+      showEditorError("저장하지 못했습니다. 브라우저의 사이트 저장 설정을 확인한 뒤 다시 시도해 주세요.");
+    }
   } finally {
     saving = saveButton.disabled = cancelButton.disabled = false;
+    expenseFields.disabled = expenseFields.hidden;
+    budgetFields.disabled = budgetFields.hidden;
   }
 });
 
 showPage();
-renderMonth();
+refreshStorage();

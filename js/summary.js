@@ -13,9 +13,13 @@ export function formatWon(amount) {
   return numberFormat.format(amount) + "원";
 }
 
-export function formatPercent(value) {
+export function formatPercent(value, remaining) {
   if (value > 0 && value < 0.1) return "0.1% 미만";
-  return percentFormat.format(value) + "%";
+  const formatted = percentFormat.format(value) + "%";
+  if (formatted === "100%" && remaining !== 0n) {
+    return remaining > 0n ? "100% 미만" : "100% 초과";
+  }
+  return formatted;
 }
 
 export function isMonth(value) {

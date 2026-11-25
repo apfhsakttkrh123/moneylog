@@ -11,7 +11,7 @@ function validExpense(expense) {
     && typeof expense.id === "string" && expense.id.trim() !== ""
     && isDate(expense.date)
     && typeof expense.title === "string" && expense.title.trim() !== ""
-    && Object.hasOwn(categories, expense.category)
+    && typeof expense.category === "string" && Object.hasOwn(categories, expense.category)
     && isAmount(expense.amount)
     && typeof expense.memo === "string";
 }
