@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f6f3">
+  <meta name="description" content="일상 지출을 기록하고 월별 소비와 남은 예산을 확인하는 개인 소비 관리 웹사이트">
+  <title>MoneyLog · 개인 소비 관리</title>
+  <link rel="stylesheet" href="./css/style.css">
+  <script type="module" src="./js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문 바로가기</a>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="#dashboard"><span class="brand-mark" aria-hidden="true">₩</span>MoneyLog</a>
+      <nav class="navigation" aria-label="주 메뉴">
+        <a href="#dashboard" aria-current="page">대시보드</a>
+        <a href="#expenses">지출 내역</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="shell" tabindex="-1">
+    <noscript><p class="notice">MoneyLog를 사용하려면 브라우저에서 JavaScript를 켜 주세요.</p></noscript>
+    <div class="workspace-heading">
+      <div>
+        <p class="month-caption" id="month-caption"></p>
+        <h1 id="page-title" tabindex="-1">월간 대시보드</h1>
+      </div>
+      <div class="toolbar" aria-label="월 선택과 지출 등록">
+        <div class="month-picker">
+          <button type="button" class="month-step" id="previous-month" aria-label="이전 달"><span aria-hidden="true">‹</span></button>
+          <label class="sr-only" for="month">조회 월</label>
+          <input id="month" type="month" min="0001-01" max="9999-12" pattern="[0-9]{4}-(0[1-9]|1[0-2])" placeholder="YYYY-MM" required>
+          <button type="button" class="month-step" id="next-month" aria-label="다음 달"><span aria-hidden="true">›</span></button>
+        </div>
+        <button type="button" class="button primary" data-action="add" disabled><span aria-hidden="true">＋</span> 지출 등록</button>
+      </div>
+    </div>
+
+    <p class="notice" id="storage-error" role="alert" hidden></p>
+
+    <div id="dashboard-view">
+      <section class="metrics" aria-label="월간 요약">
+        <article class="panel metric">
+          <h2>총지출</h2>
+          <p class="amount" id="total-spent">—</p>
+          <p class="detail" id="expense-count">선택한 월의 지출</p>
+        </article>
+        <article class="panel metric">
+          <h2>월 예산</h2>
+          <p class="amount" id="budget-amount">—</p>
+          <p class="detail" id="budget-detail">선택한 월의 예산</p>
+        </article>
+        <article class="panel metric balance">
+          <h2>잔여 예산</h2>
+          <p class="amount" id="balance-amount">—</p>
+          <p class="detail" id="balance-detail">월 예산에서 총지출을 뺀 금액</p>
+        </article>
+      </section>
+
+      <section class="panel budget-panel" aria-labelledby="budget-heading">
+        <div class="panel-heading">
+          <div>
+            <h2 id="budget-heading">예산 사용률</h2>
+            <p class="detail" id="budget-usage">예산을 설정하면 사용률을 확인할 수 있습니다.</p>
+          </div>
+          <button type="button" class="button" data-action="budget" disabled>예산 설정</button>
+        </div>
+        <progress id="budget-progress" max="100" value="0" aria-labelledby="budget-heading" hidden></progress>
+      </section>
+
+      <div class="dashboard-grid">
+        <section class="panel dashboard-panel" aria-labelledby="category-heading">
+          <div class="panel-heading"><h2 id="category-heading">카테고리별 지출</h2></div>
+          <ul class="category-list" id="category-list"></ul>
+          <p class="empty" id="category-empty">지출을 등록하면 카테고리별 금액과 비중이 표시됩니다.</p>
+        </section>
+        <section class="panel dashboard-panel" aria-labelledby="recent-heading">
+          <div class="panel-heading">
+            <h2 id="recent-heading">최근 지출</h2>
+            <a class="text-link" href="#expenses">전체 내역 <span aria-hidden="true">→</span></a>
+          </div>
+          <ul class="expense-list" id="recent-list"></ul>
+          <div class="empty" id="recent-empty">
+            <p>이 달의 첫 지출을 기록해 보세요.</p>
+            <button type="button" class="text-link" data-action="add" disabled>지출 등록</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <section id="expenses-view" class="panel ledger" aria-label="지출 목록" hidden>
+      <div class="filters">
+        <label>지출 검색
+          <input id="search" type="search" placeholder="지출명 또는 메모" autocomplete="off">
+        </label>
+        <label>카테고리
+          <select id="category-filter"><option value="">전체 카테고리</option></select>
+        </label>
+      </div>
+      <div class="ledger-heading">
+        <h2>조회 결과</h2>
+        <span class="detail" id="result-count" role="status"></span>
+      </div>
+      <ul id="expense-list" class="expense-list"></ul>
+      <div id="list-empty" class="empty" hidden>
+        <p id="list-empty-message"></p>
+        <button type="button" class="text-link" data-action="add" disabled>지출 등록</button>
+      </div>
+    </section>
+
+    <footer class="footer">지출과 예산은 이 브라우저에 저장됩니다.</footer>
+  </main>
+
+  <p id="announcement" class="sr-only" role="status"></p>
+
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="editor-form">
+      <h2 id="editor-title">지출 등록</h2>
+      <p class="detail" id="editor-month" hidden></p>
+      <p id="delete-message" hidden></p>
+
+      <fieldset id="expense-fields">
+        <label>지출일 <input name="date" type="date" min="0001-01-01" max="9999-12-31" required></label>
+        <label>지출명 <input name="title" type="text" maxlength="60" required></label>
+        <label>카테고리 <select name="category" required><option value="">선택</option></select></label>
+        <label>금액 (원) <input name="amount" type="number" min="1" max="9007199254740991" step="1" inputmode="numeric" required></label>
+        <label class="full-width"><span>메모 <span class="detail">(선택)</span></span>
+          <textarea name="memo" rows="2" maxlength="200"></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset id="budget-fields" hidden disabled>
+        <label>예산 금액 (원) <input name="budget" type="number" min="1" max="9007199254740991" step="1" inputmode="numeric" required></label>
+      </fieldset>
+
+      <p id="editor-error" class="notice" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="button" id="cancel-editor">취소</button>
+        <button type="submit" class="button primary" id="save-editor">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="expense-row">
+    <li class="expense-row">
+      <span class="category-mark" aria-hidden="true"></span>
+      <div class="expense-description">
+        <strong class="expense-title"></strong>
+        <p class="detail expense-meta"></p>
+        <p class="expense-memo" hidden></p>
+      </div>
+      <strong class="expense-amount"></strong>
+      <div class="row-actions" hidden>
+        <button type="button" class="button compact" data-action="edit">수정</button>
+        <button type="button" class="button compact remove" data-action="delete">삭제</button>
+      </div>
+    </li>
+  </template>
+
+  <template id="category-row">
+    <li class="category-row">
+      <div class="category-label">
+        <span class="category-dot" aria-hidden="true"></span>
+        <span class="category-name"></span>
+        <strong class="category-amount"></strong>
+        <span class="detail category-share"></span>
+      </div>
+      <div class="category-track" aria-hidden="true"><span></span></div>
+    </li>
+  </template>
+</body>
+</html>
